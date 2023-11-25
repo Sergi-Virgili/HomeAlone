@@ -168,9 +168,10 @@ void setup()
 
 void loop()
 {
-
+  bool activateAlarma = !digitalRead(5);
+  bool desactivateAlarma = !digitalRead(6);
   // Activa la alarma
-  if (!digitalRead(5))
+  if (activateAlarma)
   {
     ledBlinker.changeMode("ON");
     alarma.activate();
@@ -182,7 +183,7 @@ void loop()
     motionSensor.update();
   }
   // Desactiva la alarma
-  if (!digitalRead(6))
+  if (desactivateAlarma)
   {
     ledBlinker.changeMode("OFF");
     alarma.deactivate();
