@@ -221,9 +221,9 @@ String mode = "OFF"; // Modo del sistema OFF, ON, BLINK
 void setup()
 {
   Serial.begin(9600);
-  pinMode(5, INPUT_PULLUP);
-  pinMode(7, INPUT_PULLUP);
-  pinMode(6, INPUT_PULLUP);
+  pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
+  pinMode(12, INPUT);       // Pin de prueba de movimiento
+  pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
   delay(1000);
   // Configuración inicial si es necesaria
 }
@@ -232,7 +232,8 @@ void loop()
 {
   bool activateAlarma = !digitalRead(5);
   bool desactivateAlarma = !digitalRead(6);
-  bool motionFaker = !digitalRead(7);
+  bool motionFaker = digitalRead(12);
+
   //  Activa la alarma
   if (activateAlarma)
   {
