@@ -161,16 +161,16 @@ public:
     if (!motionState)
       Serial.println("NO HAY MOVIMIENTO");
   }
-  void activate()
-  {
-    isActivated = true;
-    Serial.println("ACTIVAR SENSOR MOVIMIENTO");
-  }
-  void deactivate()
-  {
-    isActivated = false;
-    Serial.println("DESACTIVAR SENSOR MOVIMIENTO");
-  }
+  // void activate()
+  // {
+  //   isActivated = true;
+  //   Serial.println("ACTIVAR SENSOR MOVIMIENTO");
+  // }
+  // void deactivate()
+  // {
+  //   isActivated = false;
+  //   Serial.println("DESACTIVAR SENSOR MOVIMIENTO");
+  // }
 };
 
 class Buzzer : public Updater
@@ -185,7 +185,6 @@ public:
     pinMode(pin, OUTPUT);
   };
 
-  // Implementación específica de la actualización para el LEDBlinker
   void performUpdate() override
   {
     if (mode == "OFF" || mode == "ON")
@@ -210,6 +209,8 @@ public:
     mode = newMode;
   }
 };
+
+int globalInterval = 100;
 
 LEDBlinker ledBlinker(13, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
 Alarm alarma(1000);
@@ -255,35 +256,9 @@ void loop()
     };
   }
   alarma.update();
-  buzzer.changeMode(mode);     // Cambia el modo del BUZZER
-  ledBlinker.changeMode(mode); // Cambia el modo del LEDBlinker
-  buzzer.update();             // Actualiza el estado del BUZZER
-  ledBlinker.update();         // Actualiza el estado del LED
-  mode = alarma.getAlarmMode();
-
-  // Activa la alarma
-  // if (activateAlarma)
-  // {
-  //   ledBlinker.changeMode("ON");
-  //   alarma.activate();
-  // }
-
-  // // Salta el detector de movimiento
-  // if (motionFaker)
-  // {
-  //   motionSensor.update();
-  // }
-  // // Desactiva la alarma
-  // if (desactivateAlarma)
-  // {
-  //   ledBlinker.changeMode("OFF");
-  //   alarma.deactivate();
-  // }
-
-  // // Serial.println(alarma.getAlarmState());
-  // if (motionSensor.getMotionState() && alarma.isActivatedAlarm())
-  // {
-  //   ledBlinker.changeMode("BLINK");
-  //   alarma.alarm();
-  // }
+  buzzer.changeMode(mode);      // Cambia el modo del BUZZER
+  ledBlinker.changeMode(mode);  // Cambia el modo del LEDBlinker
+  buzzer.update();              // Actualiza el estado del BUZZER
+  ledBlinker.update();          // Actualiza el estado del LED
+  mode = alarma.getAlarmMode(); // Actualiza el modo del sistema despues de tiempo de espera
 }
