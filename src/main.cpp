@@ -3,8 +3,8 @@
 class Updater
 {
 protected:
-  unsigned long previousMillis;
   const unsigned long interval;
+  unsigned long previousMillis;
 
 public:
   Updater(unsigned long interval) : interval(interval), previousMillis(0) {}
@@ -46,7 +46,7 @@ public:
       digitalWrite(ledPin, HIGH);
       return;
     }
-    if (mode == "BLINK")
+    if (mode == "STANDBY")
     {
       digitalWrite(ledPin, !digitalRead(ledPin)); // Cambia el estado del LED
       return;
@@ -153,16 +153,57 @@ public:
   }
 };
 
+class Buzzer : public Updater
+{
+private:
+  int pin;
+  String mode = "OFF";
+
+public:
+  Buzzer(int pin, unsigned long interval) : Updater(interval), pin(pin)
+  {
+    pinMode(pin, OUTPUT);
+  };
+
+  // Implementación específica de la actualización para el LEDBlinker
+  void performUpdate() override
+  {
+    if (mode == "OFF")
+    {
+      noTone(pin);
+      return;
+    }
+    if (mode == "ALARM")
+    {
+      tone(pin, 1000, 250);
+      return;
+    }
+    if (mode == "STANDBY")
+    {
+      tone(pin, 500, 250);
+      return;
+    }
+  }
+  void changeMode(String newMode)
+  {
+
+    mode = newMode;
+  }
+};
+
 LEDBlinker ledBlinker(13, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
 Alarm alarma(1000);
 MotionSensor motionSensor(2, 1000);
+Buzzer buzzer(8, 1000);
 
+String mode = "OFF";
 void setup()
 {
   Serial.begin(9600);
   pinMode(5, INPUT_PULLUP);
   pinMode(7, INPUT_PULLUP);
   pinMode(6, INPUT_PULLUP);
+  delay(1000);
   // Configuración inicial si es necesaria
 }
 
@@ -170,31 +211,58 @@ void loop()
 {
   bool activateAlarma = !digitalRead(5);
   bool desactivateAlarma = !digitalRead(6);
-  // Activa la alarma
+  bool motionFaker = !digitalRead(7);
+  //  Activa la alarma
   if (activateAlarma)
   {
-    ledBlinker.changeMode("ON");
+    mode = "STANDBY";
     alarma.activate();
   }
-
-  // Salta el detector de movimiento
-  if (!digitalRead(7))
-  {
-    motionSensor.update();
-  }
-  // Desactiva la alarma
+  // // Desactiva la alarma
   if (desactivateAlarma)
   {
-    ledBlinker.changeMode("OFF");
+    mode = "OFF";
     alarma.deactivate();
   }
-
-  // Serial.println(alarma.getAlarmState());
-  if (motionSensor.getMotionState() && alarma.isActivatedAlarm())
+  // // Salta el detector de movimiento
+  if (motionFaker)
   {
-    ledBlinker.changeMode("BLINK");
-    alarma.alarm();
+    motionSensor.update();
+    if (mode == "STANDBY")
+    {
+      mode = "ALARM";
+      alarma.alarm();
+    };
   }
 
+  buzzer.changeMode(mode);
+  ledBlinker.changeMode(mode);
+  buzzer.update();
   ledBlinker.update(); // Actualiza el estado del LED
+
+  // Activa la alarma
+  // if (activateAlarma)
+  // {
+  //   ledBlinker.changeMode("ON");
+  //   alarma.activate();
+  // }
+
+  // // Salta el detector de movimiento
+  // if (motionFaker)
+  // {
+  //   motionSensor.update();
+  // }
+  // // Desactiva la alarma
+  // if (desactivateAlarma)
+  // {
+  //   ledBlinker.changeMode("OFF");
+  //   alarma.deactivate();
+  // }
+
+  // // Serial.println(alarma.getAlarmState());
+  // if (motionSensor.getMotionState() && alarma.isActivatedAlarm())
+  // {
+  //   ledBlinker.changeMode("BLINK");
+  //   alarma.alarm();
+  // }
 }
