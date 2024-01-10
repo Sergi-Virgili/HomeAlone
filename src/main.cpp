@@ -1,5 +1,11 @@
 #include <Arduino.h>
 
+// Configuración
+#define LED_PIN 13
+#define BUZZER_PIN 8
+#define MOTION_SENSOR_PIN 12
+#define ALARM_STAND_BY_TIME 3000
+
 class Updater
 {
 protected:
@@ -66,7 +72,7 @@ private:
   String mode = "OFF";
   bool isRunning;
   bool isActivated = false;
-  const unsigned long standByTime = 3000;
+  const unsigned long standByTime = ALARM_STAND_BY_TIME;
   unsigned long activationTime = 0;
 
 public:
@@ -138,7 +144,7 @@ private:
   bool motionState = digitalRead(motionSensorPin);
 
 public:
-  MotionSensor(int pin) 
+  MotionSensor(int pin)
   {
     motionSensorPin = pin;
     pinMode(motionSensorPin, INPUT);
@@ -183,17 +189,16 @@ public:
   }
   void changeMode(String newMode)
   {
-
     mode = newMode;
   }
 };
 
 int globalInterval = 100;
 
-LEDBlinker ledBlinker(13, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
+LEDBlinker ledBlinker(LED_PIN, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
 Alarm alarma(1000);
-MotionSensor motionSensor(12);
-Buzzer buzzer(8, 1000);
+MotionSensor motionSensor(MOTION_SENSOR_PIN);
+Buzzer buzzer(BUZZER_PIN, 1000);
 
 String mode = "OFF"; // Modo del sistema OFF, ON, BLINK
 void setup()
@@ -208,7 +213,7 @@ void setup()
 
 void loop()
 {
-  bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
+  bool activateAlarma = !digitalRead(5);    // Botón de activación de la alarma cambiar por boton del teclado
   bool desactivateAlarma = !digitalRead(6); // Botón de desactivación de la alarma cambiar el teclado numerico
 
   Serial.println(mode);
@@ -232,7 +237,7 @@ void loop()
     alarma.alarm();
   }
 
-  alarma.update();            // Actualiza el estado de la alarma empezando por el tiempo de espera
+  alarma.update();              // Actualiza el estado de la alarma empezando por el tiempo de espera
   buzzer.changeMode(mode);      // Cambia el modo del BUZZER
   ledBlinker.changeMode(mode);  // Cambia el modo del LEDBlinker
   buzzer.update();              // Actualiza el estado del BUZZER
