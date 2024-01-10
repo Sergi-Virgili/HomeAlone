@@ -4,7 +4,24 @@
 #define LED_PIN 13
 #define BUZZER_PIN 8
 #define MOTION_SENSOR_PIN 12
-#define ALARM_STAND_BY_TIME 3000
+#define ALARM_STANDBY_TIME 3000
+
+// Modos del sistema
+enum Modes
+{
+  OFF,
+  ON,
+  ALARM,
+  STANDBY,
+  NUM_MODES
+};
+
+// Definicioón de la estructura de tono del Buzzer
+struct ToneSetting
+{
+  int frequency;
+  unsigned long duration;
+};
 
 class Updater
 {
@@ -31,48 +48,55 @@ class LEDBlinker : public Updater
 {
 private:
   int ledPin;
-  String mode = "OFF";
+  Modes mode = Modes::OFF;
+  static void (*updateFunctions[static_cast<int>(Modes::NUM_MODES)])(int); // Array de punteros a función para actualizar el LED
 
 public:
   LEDBlinker(int pin, unsigned long interval) : Updater(interval), ledPin(pin)
   {
     pinMode(ledPin, OUTPUT);
+    // Asigna funciones a cada modo
+    updateFunctions[static_cast<int>(Modes::OFF)] = &LEDBlinker::turnOff;
+    updateFunctions[static_cast<int>(Modes::ON)] = &LEDBlinker::turnOn;
+    updateFunctions[static_cast<int>(Modes::STANDBY)] = &LEDBlinker::toggle;
+    updateFunctions[static_cast<int>(Modes::ALARM)] = &LEDBlinker::toggle;
   };
 
   // Implementación específica de la actualización para el LEDBlinker
   void performUpdate() override
   {
-    if (mode == "OFF")
-    {
-      digitalWrite(ledPin, LOW);
-      return;
-    }
-    if (mode == "ON")
-    {
-      digitalWrite(ledPin, HIGH);
-      return;
-    }
-    if (mode == "STANDBY")
-    {
-      digitalWrite(ledPin, !digitalRead(ledPin)); // Cambia el estado del LED
-      return;
-    }
+    // Llama a la función correspondiente al modo actual
+    updateFunctions[static_cast<int>(mode)](ledPin);
   }
-  void changeMode(String newMode)
+  // Funciones estáticas para actualizar el LED
+  static void turnOff(int pin)
+  {
+    digitalWrite(pin, LOW);
+  }
+  static void turnOn(int pin)
+  {
+    digitalWrite(pin, HIGH);
+  }
+  static void toggle(int pin)
+  {
+    digitalWrite(pin, !digitalRead(pin));
+  }
+  void changeMode(Modes newMode)
   {
     mode = newMode;
   }
 };
-
+// Inicializa el arreglo de punteros a función para actualizar el LED en cada modo del sistema
+void (*LEDBlinker::updateFunctions[static_cast<int>(Modes::NUM_MODES)])(int) = {nullptr};
 // ALARM
 
 class Alarm : public Updater
 {
 private:
-  String mode = "OFF";
+  Modes mode = OFF;
   bool isRunning;
   bool isActivated = false;
-  const unsigned long standByTime = ALARM_STAND_BY_TIME;
+  const unsigned long standByTime = ALARM_STANDBY_TIME;
   unsigned long activationTime = 0;
 
 public:
@@ -85,12 +109,11 @@ public:
     if (millis() - activationTime > standByTime)
     {
       activationTime = 0;
-      mode = "ON";
+      mode = Modes::ON;
       return;
     }
-    // alarmState = !alarmState;
   }
-  String getAlarmMode()
+  Modes getAlarmMode()
   {
     return mode;
   }
@@ -105,7 +128,7 @@ public:
       return;
     if (!isRunning)
     {
-      mode = "ALARM";
+      mode = Modes::ALARM;
       Serial.println("HA ENTRADO ALGUIEN");
       Serial.println("ALARMA SONANDO - EVIA UN EMAIL");
       isRunning = true;
@@ -119,20 +142,16 @@ public:
     isRunning = false;
     isActivated = false;
     activationTime = 0;
-    mode = "OFF";
+    mode = Modes::OFF;
     Serial.println("DESACTIVAR");
   }
   void activate()
   {
     isActivated = true;
     activationTime = millis();
-    mode = "STANDBY";
+    mode = Modes::STANDBY;
     Serial.println("ACTIVAR ALARMA");
   }
-  // bool isActivatedAlarm()
-  // {
-  //   return isActivated;
-  // }
 };
 
 // SENSOR DE MOVIMIENTO
@@ -161,33 +180,33 @@ class Buzzer : public Updater
 {
 private:
   int pin;
-  String mode = "OFF";
+  Modes mode = OFF;
+  ToneSetting toneSettings[NUM_MODES];
 
 public:
   Buzzer(int pin, unsigned long interval) : Updater(interval), pin(pin)
   {
     pinMode(pin, OUTPUT);
+    // Configura los ajustes de tono para cada modo
+    toneSettings[OFF] = {0, 0};
+    toneSettings[ON] = {0, 0}; // Ajustar si necesario
+    toneSettings[ALARM] = {1000, 0};
+    toneSettings[STANDBY] = {500, 250};
   };
 
   void performUpdate() override
   {
-    if (mode == "OFF" || mode == "ON")
+    ToneSetting setting = toneSettings[mode];
+    if (setting.frequency == 0)
     {
       noTone(pin);
-      return;
     }
-    if (mode == "ALARM")
+    else
     {
-      tone(pin, 1000);
-      return;
-    }
-    if (mode == "STANDBY")
-    {
-      tone(pin, 500, 250);
-      return;
+      tone(pin, setting.frequency, setting.duration);
     }
   }
-  void changeMode(String newMode)
+  void changeMode(Modes newMode)
   {
     mode = newMode;
   }
@@ -195,20 +214,19 @@ public:
 
 int globalInterval = 100;
 
-LEDBlinker ledBlinker(LED_PIN, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
-Alarm alarma(1000);
+LEDBlinker ledBlinker(LED_PIN, 300); // Crea un objeto LEDBlinker que se actualizable cada 300 ms
+Alarm alarma(1000);                  // Crea un objeto Alarm que se actualizable cada 1 segundo
 MotionSensor motionSensor(MOTION_SENSOR_PIN);
 Buzzer buzzer(BUZZER_PIN, 1000);
 
-String mode = "OFF"; // Modo del sistema OFF, ON, BLINK
+Modes mode = Modes::OFF; // Modo del sistema OFF, ON, BLINK
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(9600);       // Inicializa el puerto serial
   pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
-  // pinMode(12, INPUT);       // Pin de prueba de movimiento
   pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
-  delay(1000);
-  // Configuración inicial si es necesaria
+
+  delay(1000); // Espera 1 segundo antes de empezar el loop
 }
 
 void loop()
@@ -231,7 +249,7 @@ void loop()
   }
 
   // Si la alarma está activada y se detecta movimiento
-  if (mode == "ON" && motionSensor.motionDetected())
+  if (mode == Modes::ON && motionSensor.motionDetected())
   {
     // mode = "ALARM";
     alarma.alarm();
