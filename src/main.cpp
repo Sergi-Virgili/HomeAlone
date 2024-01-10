@@ -13,6 +13,7 @@ enum Modes
   ON,
   ALARM,
   STANDBY,
+  DEACTIVATE_TIME,
   NUM_MODES
 };
 
@@ -190,7 +191,7 @@ class Buzzer : public Updater
 {
 private:
   int pin;                             // Pin del buzzer
-  Modes mode = OFF;                    // Modo del sistema
+  Modes mode = Modes::OFF;             // Modo del sistema
   ToneSetting toneSettings[NUM_MODES]; // Arreglo de ajustes de tono para cada modo
 
 public:
@@ -220,7 +221,74 @@ public:
   {
     mode = newMode; // Cambia el modo
   }
+
+  static void beep()
+  {
+    tone(BUZZER_PIN, 800, 200);
+    delay(100);
+  }
+  static void tripleBeep()
+  {
+    delay(100);
+    for (int i = 0; i < 3; i++)
+    {
+      tone(BUZZER_PIN, 1000, 100);
+      delay(200);
+    }
+  }
 };
+
+// KEYPAD
+// Definición de la clase Keypad que se encarga de leer el estado del teclado numérico
+class Keypad
+{
+private:
+  int keypadPin;
+  bool keypadState = false;
+  bool lastKeypadState = false;
+  String password = "AAA";
+  String keypadValue = "";
+
+public:
+  Keypad(int pin)
+  {
+    keypadPin = pin;
+    pinMode(keypadPin, INPUT_PULLUP);
+  }
+
+  bool keypadPressed()
+  {
+    keypadState = !digitalRead(keypadPin); // Leer el estado actual del botón
+
+    // Comprobar si el botón fue soltado antes de esta presión
+    if (keypadState && !lastKeypadState)
+    {
+      lastKeypadState = keypadState; // Actualizar el estado anterior
+      keypadValue += 'A';            // Agregar el valor del botón al valor total
+      Serial.println(keypadValue);   // Imprimir el valor total
+      Buzzer::beep();                // Hacer sonar el buzzer como beep
+      return true;                   // Botón presionado
+    }
+    else
+    {
+      lastKeypadState = keypadState; // Actualizar el estado anterior
+      return false;                  // Botón no presionado o ya estaba presionado
+    }
+  }
+  bool isPasswordCorrect()
+  {
+    if (keypadValue == password) // Comprobar si el valor total es igual a la contraseña
+    {
+      keypadValue = ""; // Reiniciar el valor del teclado
+      Buzzer::tripleBeep();
+      return true; // Contraseña correcta retorna true
+    }
+    // Si el valor total es diferente a la contraseña
+    return false; // Contraseña incorrecta retorna false
+  }
+};
+
+// Variables globales
 
 int globalInterval = 100;
 
@@ -228,6 +296,7 @@ LEDBlinker ledBlinker(LED_PIN, 300);          // Crea un objeto LEDBlinker que e
 Alarm alarma(1000);                           // Crea un objeto Alarm que se actualizable cada 1 segundo
 MotionSensor motionSensor(MOTION_SENSOR_PIN); // Crea un objeto MotionSensor
 Buzzer buzzer(BUZZER_PIN, 1000);              // Crea un objeto Buzzer que es actualizable cada 1 segundo
+Keypad keypad(6);                             // Crea un objeto Keypad
 
 Modes mode = Modes::OFF; // Modo del sistema inicial establecido en OFF
 
@@ -237,7 +306,7 @@ void setup()
 {
   Serial.begin(9600);       // Inicializa el puerto serial
   pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
-  pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
+  // pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
 
   delay(1000); // Espera 1 segundo antes de empezar el loop
 }
@@ -246,8 +315,7 @@ void setup()
 // Función que se ejecuta continuamente
 void loop()
 {
-  bool activateAlarma = !digitalRead(5);    // Botón de activación de la alarma cambiar por boton del teclado
-  bool desactivateAlarma = !digitalRead(6); // Botón de desactivación de la alarma cambiar el teclado numerico
+  bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
 
   Serial.println(mode);
   //  Activa la alarma
@@ -256,18 +324,20 @@ void loop()
     // mode = "STANDBY";
     alarma.activate();
   }
-  // Desactiva la alarma
-  if (desactivateAlarma)
-  {
-    // mode = "OFF";
-    alarma.deactivate();
-  }
 
   // Si la alarma está activada y se detecta movimiento
   if (mode == Modes::ON && motionSensor.motionDetected())
   {
     // mode = "ALARM";
     alarma.alarm();
+  }
+
+  keypad.keypadPressed(); // Botón de desactivación de la alarma cambiar el teclado numerico
+
+  // Si la contraseña es correcta desactiva la alarma
+  if (keypad.isPasswordCorrect())
+  {
+    alarma.deactivate(); // Desactiva la alarma
   }
 
   alarma.update();              // Actualiza el estado de la alarma empezando por el tiempo de espera
