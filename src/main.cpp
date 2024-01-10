@@ -64,13 +64,13 @@ class Alarm : public Updater
 {
 private:
   String mode = "OFF";
-  bool alarmState;
+  bool isRunning;
   bool isActivated = false;
   const unsigned long standByTime = 3000;
   unsigned long activationTime = 0;
 
 public:
-  Alarm(unsigned long interval) : Updater(interval), alarmState(false) {}
+  Alarm(unsigned long interval) : Updater(interval), isRunning(false) {}
 
   void performUpdate() override
   {
@@ -90,27 +90,27 @@ public:
   }
   bool getAlarmState()
   {
-    return alarmState;
+    return isRunning;
   }
 
   void alarm()
   {
     if (isActivated == false)
       return;
-    if (!alarmState)
+    if (!isRunning)
     {
       mode = "ALARM";
       Serial.println("HA ENTRADO ALGUIEN");
       Serial.println("ALARMA SONANDO - EVIA UN EMAIL");
-      alarmState = true;
+      isRunning = true;
       return;
     }
-    alarmState = true;
+    isRunning = true;
     Serial.println("ALARMA SONANDO");
   }
   void deactivate()
   {
-    alarmState = false;
+    isRunning = false;
     isActivated = false;
     activationTime = 0;
     mode = "OFF";
@@ -123,54 +123,32 @@ public:
     mode = "STANDBY";
     Serial.println("ACTIVAR ALARMA");
   }
-  bool isActivatedAlarm()
-  {
-    return isActivated;
-  }
+  // bool isActivatedAlarm()
+  // {
+  //   return isActivated;
+  // }
 };
 
 // SENSOR DE MOVIMIENTO
 
-class MotionSensor : public Updater
+class MotionSensor
 {
 private:
-  bool isActivated = false;
   int motionSensorPin;
-  bool motionState;
+  bool motionState = digitalRead(motionSensorPin);
 
 public:
-  MotionSensor(int pin, unsigned long interval) : Updater(interval), motionSensorPin(pin), motionState(false)
+  MotionSensor(int pin) 
   {
+    motionSensorPin = pin;
     pinMode(motionSensorPin, INPUT);
   }
 
-  void performUpdate() override
+  bool motionDetected()
   {
-    setMotionState(!getMotionState());
-  }
-
-  bool getMotionState()
-  {
+    motionState = digitalRead(motionSensorPin);
     return motionState;
   }
-  void setMotionState(bool state)
-  {
-    motionState = state;
-    if (motionState)
-      Serial.println("DETECTADO MOVIMIENTO");
-    if (!motionState)
-      Serial.println("NO HAY MOVIMIENTO");
-  }
-  // void activate()
-  // {
-  //   isActivated = true;
-  //   Serial.println("ACTIVAR SENSOR MOVIMIENTO");
-  // }
-  // void deactivate()
-  // {
-  //   isActivated = false;
-  //   Serial.println("DESACTIVAR SENSOR MOVIMIENTO");
-  // }
 };
 
 class Buzzer : public Updater
@@ -214,7 +192,7 @@ int globalInterval = 100;
 
 LEDBlinker ledBlinker(13, 300); // Crea un objeto LEDBlinker que parpadea cada 1000 ms
 Alarm alarma(1000);
-MotionSensor motionSensor(2, 1000);
+MotionSensor motionSensor(12);
 Buzzer buzzer(8, 1000);
 
 String mode = "OFF"; // Modo del sistema OFF, ON, BLINK
@@ -222,7 +200,7 @@ void setup()
 {
   Serial.begin(9600);
   pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
-  pinMode(12, INPUT);       // Pin de prueba de movimiento
+  // pinMode(12, INPUT);       // Pin de prueba de movimiento
   pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
   delay(1000);
   // Configuración inicial si es necesaria
@@ -230,33 +208,31 @@ void setup()
 
 void loop()
 {
-  bool activateAlarma = !digitalRead(5);
-  bool desactivateAlarma = !digitalRead(6);
-  bool motionFaker = digitalRead(12);
+  bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
+  bool desactivateAlarma = !digitalRead(6); // Botón de desactivación de la alarma cambiar el teclado numerico
+
   Serial.println(mode);
   //  Activa la alarma
   if (activateAlarma)
   {
-    mode = "STANDBY";
+    // mode = "STANDBY";
     alarma.activate();
   }
   // Desactiva la alarma
   if (desactivateAlarma)
   {
-    mode = "OFF";
+    // mode = "OFF";
     alarma.deactivate();
   }
-  // Salta el detector de movimiento
-  if (motionFaker)
+
+  // Si la alarma está activada y se detecta movimiento
+  if (mode == "ON" && motionSensor.motionDetected())
   {
-    motionSensor.update();
-    if (mode == "ON")
-    {
-      mode = "ALARM";
-      alarma.alarm();
-    };
+    // mode = "ALARM";
+    alarma.alarm();
   }
-  alarma.update();
+
+  alarma.update();            // Actualiza el estado de la alarma empezando por el tiempo de espera
   buzzer.changeMode(mode);      // Cambia el modo del BUZZER
   ledBlinker.changeMode(mode);  // Cambia el modo del LEDBlinker
   buzzer.update();              // Actualiza el estado del BUZZER
