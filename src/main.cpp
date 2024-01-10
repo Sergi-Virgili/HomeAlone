@@ -233,7 +233,7 @@ void loop()
   bool activateAlarma = !digitalRead(5);
   bool desactivateAlarma = !digitalRead(6);
   bool motionFaker = digitalRead(12);
-
+  Serial.println(mode);
   //  Activa la alarma
   if (activateAlarma)
   {
