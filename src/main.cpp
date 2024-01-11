@@ -13,7 +13,7 @@ enum Modes
   ON,
   ALARM,
   STANDBY,
-  DEACTIVATE_TIME,
+  TIME,
   NUM_MODES
 };
 
@@ -63,6 +63,7 @@ public:
     updateFunctions[static_cast<int>(Modes::OFF)] = &LEDBlinker::turnOff;
     updateFunctions[static_cast<int>(Modes::ON)] = &LEDBlinker::turnOn;
     updateFunctions[static_cast<int>(Modes::STANDBY)] = &LEDBlinker::toggle;
+    updateFunctions[static_cast<int>(Modes::TIME)] = &LEDBlinker::toggle;
     updateFunctions[static_cast<int>(Modes::ALARM)] = &LEDBlinker::toggle;
   };
 
@@ -92,101 +93,6 @@ public:
 };
 // Inicializa el arreglo de punteros a función para actualizar el LED en cada modo del sistema
 void (*LEDBlinker::updateFunctions[static_cast<int>(Modes::NUM_MODES)])(int) = {nullptr};
-
-// ALARM
-// Definición de la clase Alarm que hereda de Updater
-// La clase Alarm se encarga de manejar el estado de la alarma
-// y de cambiar el modo del sistema.
-class Alarm : public Updater
-{
-private:
-  Modes mode = OFF;                                     // Modo de la alarma
-  bool isRunning;                                       // Estado de la alarma
-  bool isActivated = false;                             // Estado de la activación de la alarma
-  const unsigned long standByTime = ALARM_STANDBY_TIME; // Tiempo de espera para activar la alarma
-  unsigned long activationTime = 0;                     // Tiempo en el que se ha activado la alarma (en millis)
-
-public:
-  Alarm(unsigned long interval) : Updater(interval), isRunning(false) {}
-
-  void performUpdate() override // Actualiza el estado de la alarma
-  {
-    if (activationTime == 0)                     // Si no se ha activado la alarma
-      return;                                    // No hace nada
-    if (millis() - activationTime > standByTime) // Si ha pasado el tiempo de espera
-    {
-      activationTime = 0; // Reinicia el tiempo de espera
-      mode = Modes::ON;   // Cambia el modo del sistema a ON
-      return;             // Termina la función
-    }
-  }
-  Modes getAlarmMode() // Devuelve el modo de la alarma
-  {
-    return mode; // Devuelve el modo
-  }
-  // bool getAlarmState() // Devuelve el estado de la alarma
-  // {
-  //   return isRunning; // Devuelve el estado
-  // }
-
-  void alarm() // Hace 'Sonar' la alarma (cambia el modo del sistema a ALARM)
-  {
-    if (isActivated == false) // Si la alarma no está activada
-      return;                 // No hace nada
-    if (!isRunning)           // Si la alarma no está sonando
-    {
-      mode = Modes::ALARM; // Cambia el modo del sistema a ALARM
-      Serial.println("HA ENTRADO ALGUIEN");
-      Serial.println("ALARMA SONANDO - EVIA UN EMAIL");
-      isRunning = true; // Cambia el estado de la alarma a sonando
-      return;           // Termina la función
-    }
-    isRunning = true; // Cambia el estado de la alarma a sonando en los otros casos
-    Serial.println("ALARMA SONANDO");
-  }
-  void deactivate() // Desactiva la alarma
-  {
-    isRunning = false;   // Cambia el estado de la alarma a apagado
-    isActivated = false; // Cambia el estado de la alarma a apagado
-    activationTime = 0;  // Reinicia el tiempo de espera
-    mode = Modes::OFF;   // Cambia el modo del sistema a OFF
-    Serial.println("DESACTIVAR");
-  }
-  void activate() // Activa la alarma
-  {
-    isActivated = true;        // Cambia el estado de la alarma a activado
-    activationTime = millis(); // Guarda tiempo de la activación
-    mode = Modes::STANDBY;     // Cambia el modo del sistema a STANDBY
-    Serial.println("ACTIVAR ALARMA");
-  }
-};
-
-// SENSOR DE MOVIMIENTO
-// Definición de la clase MotionSensor que se encarga de leer el estado del sensor de movimiento
-// y devolver el estado del mismo.
-class MotionSensor
-{
-private:
-  int motionSensorPin;
-  bool motionState = digitalRead(motionSensorPin);
-
-public:
-  MotionSensor(int pin)
-  {
-    motionSensorPin = pin;
-    pinMode(motionSensorPin, INPUT);
-  }
-
-  bool motionDetected()
-  {
-    motionState = digitalRead(motionSensorPin);
-    return motionState;
-  }
-};
-
-// BUZZER
-// Definición de la clase Buzzer que hereda de Updater y se encarga de manejar el estado del buzzer
-// según el modo del sistema.
 class Buzzer : public Updater
 {
 private:
@@ -203,6 +109,7 @@ public:
     toneSettings[ON] = {0, 0};          // Frecuencia y duración del tono para el modo ON
     toneSettings[ALARM] = {1000, 0};    // Frecuencia y duración del tono para el modo ALARM
     toneSettings[STANDBY] = {500, 250}; // Frecuencia y duración del tono para el modo STANDBY
+    toneSettings[TIME] = {500, 250};    // Frecuencia y duración del tono para el modo DEACTIVATE_TIME
   };
 
   void performUpdate() override // Actualiza el estado del buzzer
@@ -237,6 +144,128 @@ public:
     }
   }
 };
+// ALARM
+// Definición de la clase Alarm que hereda de Updater
+// La clase Alarm se encarga de manejar el estado de la alarma
+// y de cambiar el modo del sistema.
+class Alarm : public Updater
+{
+private:
+  Modes mode = Modes::OFF;                              // Modo de la alarma
+  bool isRunning = false;                               // Estado de la alarma
+  bool isActivated = false;                             // Estado de la activación de la alarma
+  const unsigned long standByTime = ALARM_STANDBY_TIME; // Tiempo de espera para activar la alarma
+  unsigned long activationTime = 0;                     // Tiempo en el que se ha activado la alarma (en millis)
+
+public:
+  Alarm(unsigned long interval) : Updater(interval), isRunning(false) {}
+
+  void performUpdate() override // Actualiza el estado de la alarma
+  {
+    Serial.println("ALARMA UPDATE");
+
+    if (activationTime == 0) // Si no se ha activado la alarma
+      return;                // No hace nada
+                             // Si estamos en STANDBY y el tiempo se ha excedido, cambiamos a DEACTIVATE_TIME
+    if (mode == Modes::STANDBY && (millis() - activationTime > standByTime))
+    {
+      mode = Modes::ON;
+      Serial.println("Cambiando a ON");
+      // Reiniciar el contador para DEACTIVATE_TIME
+      return;
+    }
+    // Si estamos en DEACTIVATE_TIME y el tiempo se ha excedido, cambiamos a ALARM
+    if (mode == Modes::TIME && (millis() - activationTime > standByTime))
+    {
+      mode = Modes::ALARM;
+      Serial.println("ALARMA ACTIVADA: Tiempo de desactivación excedido");
+      return;
+    }
+    // mode = Modes::ON;   // Cambia el modo del sistema a ON
+    // return;             // Termina la función
+  }
+  Modes getAlarmMode() // Devuelve el modo de la alarma
+  {
+    return mode; // Devuelve el modo
+  }
+  // bool getAlarmState() // Devuelve el estado de la alarma
+  // {
+  //   return isRunning; // Devuelve el estado
+  // }
+
+  void alarm() // Hace 'Sonar' la alarma (cambia el modo del sistema a ALARM)
+  {
+    if (isActivated == false) // Si la alarma no está activada
+      return;                 // No hace nada
+    // if (mode == Modes::ALARM) // Si la alarma ya está sonando
+    //   return;                 // No hace nada
+    if (mode == Modes::ON)
+    {                     // Si la alarma está activada y no está sonando
+      mode = Modes::TIME; // Cambia el modo del sistema a DEACTIVATE_TIME
+      Serial.println("ALARMA SONANDO - ESPERANDO A QUE SE DESACTIVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+      delay(100);
+      Serial.println(millis());
+      activationTime = millis(); // Guarda tiempo de la activación;
+      // isRunning = true;          // Cambia el estado de la alarma a sonando
+      return; // Termina la función
+    }
+    if (!isRunning) // Si la alarma no está sonando
+    {
+     
+      mode = Modes::ALARM; // Cambia el modo del sistema a ALARM
+      Serial.println("HA ENTRADO ALGUIEN");
+      Serial.println("ALARMA SONANDO - EVIA UN EMAIL MAIILLLLLLLLLLLLLLLLLLL");
+      isRunning = true; // Cambia el estado de la alarma a sonando
+      return;           // Termina la función
+    }
+    isRunning = true; // Cambia el estado de la alarma a sonando en los otros casos
+    Serial.println("ALARMA SONANDO");
+  }
+  void deactivate() // Desactiva la alarma
+  {
+    isRunning = false;   // Cambia el estado de la alarma a apagado
+    isActivated = false; // Cambia el estado de la alarma a apagado
+    activationTime = 0;  // Reinicia el tiempo de espera
+    Buzzer::tripleBeep();
+    mode = Modes::OFF; // Cambia el modo del sistema a OFF
+    Serial.println("DESACTIVAR");
+  }
+  void activate() // Activa la alarma
+  {
+    isActivated = true;        // Cambia el estado de la alarma a activado
+    activationTime = millis(); // Guarda tiempo de la activación
+    Buzzer::beep();
+    mode = Modes::STANDBY; // Cambia el modo del sistema a STANDBY
+    Serial.println("ACTIVAR ALARMA");
+  }
+};
+
+// SENSOR DE MOVIMIENTO
+// Definición de la clase MotionSensor que se encarga de leer el estado del sensor de movimiento
+// y devolver el estado del mismo.
+class MotionSensor
+{
+private:
+  int motionSensorPin;
+  bool motionState = digitalRead(motionSensorPin);
+
+public:
+  MotionSensor(int pin)
+  {
+    motionSensorPin = pin;
+    pinMode(motionSensorPin, INPUT);
+  }
+
+  bool motionDetected()
+  {
+    motionState = digitalRead(motionSensorPin);
+    return motionState;
+  }
+};
+
+// BUZZER
+// Definición de la clase Buzzer que hereda de Updater y se encarga de manejar el estado del buzzer
+// según el modo del sistema.
 
 // KEYPAD
 // Definición de la clase Keypad que se encarga de leer el estado del teclado numérico
@@ -280,7 +309,7 @@ public:
     if (keypadValue == password) // Comprobar si el valor total es igual a la contraseña
     {
       keypadValue = ""; // Reiniciar el valor del teclado
-      Buzzer::tripleBeep();
+
       return true; // Contraseña correcta retorna true
     }
     // Si el valor total es diferente a la contraseña
@@ -298,7 +327,7 @@ MotionSensor motionSensor(MOTION_SENSOR_PIN); // Crea un objeto MotionSensor
 Buzzer buzzer(BUZZER_PIN, 1000);              // Crea un objeto Buzzer que es actualizable cada 1 segundo
 Keypad keypad(6);                             // Crea un objeto Keypad
 
-Modes mode = Modes::OFF; // Modo del sistema inicial establecido en OFF
+// Modes mode = Modes::OFF; // Modo del sistema inicial establecido en OFF
 
 // SETUP
 // Función de configuración que se ejecuta una vez al inicio del programa
@@ -315,6 +344,8 @@ void setup()
 // Función que se ejecuta continuamente
 void loop()
 {
+  Serial.println(millis());
+  Modes mode = alarma.getAlarmMode();    // Actualiza el modo del sistema despues de tiempo de espera
   bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
 
   Serial.println(mode);
@@ -340,10 +371,12 @@ void loop()
     alarma.deactivate(); // Desactiva la alarma
   }
 
-  alarma.update();              // Actualiza el estado de la alarma empezando por el tiempo de espera
-  buzzer.changeMode(mode);      // Cambia el modo del BUZZER
-  ledBlinker.changeMode(mode);  // Cambia el modo del LEDBlinker
-  buzzer.update();              // Actualiza el estado del BUZZER
-  ledBlinker.update();          // Actualiza el estado del LED
-  mode = alarma.getAlarmMode(); // Actualiza el modo del sistema despues de tiempo de espera
+  alarma.update();             // Actualiza el estado de la alarma empezando por el tiempo de espera
+  buzzer.changeMode(mode);     // Cambia el modo del BUZZER
+  ledBlinker.changeMode(mode); // Cambia el modo del LEDBlinker
+  buzzer.update();             // Actualiza el estado del BUZZER
+  ledBlinker.update();         // Actualiza el estado del LED
+
+  Serial.println("End Of Loop");
+  // delay(500); // Espera 100 ms antes de volver a ejecutar el loop
 }
