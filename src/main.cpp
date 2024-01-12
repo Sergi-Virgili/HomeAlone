@@ -2,7 +2,7 @@
 
 // Configuración
 #define LED_PIN 13
-#define BUZZER_PIN 8
+#define BUZZER_PIN 11
 #define MOTION_SENSOR_PIN 12
 #define ALARM_STANDBY_TIME 3000
 
@@ -24,6 +24,20 @@ struct ToneSetting
   unsigned long duration;
 };
 
+#define ROWS 4
+#define COLS 4
+// Define los pines del Arduino que estarán conectados a las filas y columnas del teclado
+const int rowPins[ROWS] = {5, 4, 3, 2}; // Conectar a los pines del Arduino correspondientes a las filas 5-8
+const int colPins[COLS] = {9, 8, 7, 6}; // Conectar a los pines del Arduino correspondientes a las columnas 1-4
+
+const char keys[ROWS][COLS] = {
+    {'1', '2', '3', 'A'},
+    {'4', '5', '6', 'B'},
+    {'7', '8', '9', 'C'},
+    {'*', '0', '#', 'D'}};
+#define NO_KEY '\0' // Definir NO_KEY como un carácter nulo
+
+// Definición de la clase Updater que se encarga de actualizar el estado de los objetos que heredan de ella cada cierto tiempo.
 class Updater
 {
 protected:
@@ -211,7 +225,7 @@ public:
     }
     if (!isRunning) // Si la alarma no está sonando
     {
-     
+
       mode = Modes::ALARM; // Cambia el modo del sistema a ALARM
       Serial.println("HA ENTRADO ALGUIEN");
       Serial.println("ALARMA SONANDO - EVIA UN EMAIL MAIILLLLLLLLLLLLLLLLLLL");
@@ -226,15 +240,15 @@ public:
     isRunning = false;   // Cambia el estado de la alarma a apagado
     isActivated = false; // Cambia el estado de la alarma a apagado
     activationTime = 0;  // Reinicia el tiempo de espera
+    mode = Modes::OFF;   // Cambia el modo del sistema a OFF
     Buzzer::tripleBeep();
-    mode = Modes::OFF; // Cambia el modo del sistema a OFF
     Serial.println("DESACTIVAR");
   }
   void activate() // Activa la alarma
   {
     isActivated = true;        // Cambia el estado de la alarma a activado
     activationTime = millis(); // Guarda tiempo de la activación
-    Buzzer::beep();
+
     mode = Modes::STANDBY; // Cambia el modo del sistema a STANDBY
     Serial.println("ACTIVAR ALARMA");
   }
@@ -272,48 +286,73 @@ public:
 class Keypad
 {
 private:
-  int keypadPin;
-  bool keypadState = false;
-  bool lastKeypadState = false;
-  String password = "AAA";
-  String keypadValue = "";
+  String password = "555"; // Contraseña esperada
+  String enteredPassword = "";
+  Alarm *alarmSystem;
 
 public:
-  Keypad(int pin)
+  Keypad(Alarm *alarm) : alarmSystem(alarm)
   {
-    keypadPin = pin;
-    pinMode(keypadPin, INPUT_PULLUP);
-  }
-
-  bool keypadPressed()
-  {
-    keypadState = !digitalRead(keypadPin); // Leer el estado actual del botón
-
-    // Comprobar si el botón fue soltado antes de esta presión
-    if (keypadState && !lastKeypadState)
+    // Configurar los pines de fila como salidas y los pines de columna como entradas con resistencia pull-up
+    for (int i = 0; i < ROWS; i++)
     {
-      lastKeypadState = keypadState; // Actualizar el estado anterior
-      keypadValue += 'A';            // Agregar el valor del botón al valor total
-      Serial.println(keypadValue);   // Imprimir el valor total
-      Buzzer::beep();                // Hacer sonar el buzzer como beep
-      return true;                   // Botón presionado
+      pinMode(rowPins[i], OUTPUT);
+      digitalWrite(rowPins[i], HIGH); // Desactiva la fila
     }
-    else
+    for (int i = 0; i < COLS; i++)
     {
-      lastKeypadState = keypadState; // Actualizar el estado anterior
-      return false;                  // Botón no presionado o ya estaba presionado
+      pinMode(colPins[i], INPUT_PULLUP);
     }
   }
-  bool isPasswordCorrect()
-  {
-    if (keypadValue == password) // Comprobar si el valor total es igual a la contraseña
-    {
-      keypadValue = ""; // Reiniciar el valor del teclado
 
-      return true; // Contraseña correcta retorna true
+  char getKeyPressed()
+  {
+    Serial.println("key press?");
+    for (int row = 0; row < ROWS; row++)
+    {
+      digitalWrite(rowPins[row], LOW); // Activa la fila
+      for (int col = 0; col < COLS; col++)
+      {
+        if (digitalRead(colPins[col]) == LOW)
+        { // Si se detecta un botón presionado
+          Buzzer::beep();
+          Serial.println("key press");
+          delay(50); // Debounce
+          while (digitalRead(colPins[col]) == LOW)
+            ; // Espera hasta que se suelte la tecla
+          Serial.println("key soltada");
+          digitalWrite(rowPins[row], HIGH); // Desactiva la fila
+          Serial.println(keys[row][col]);
+          return keys[row][col];
+        }
+      }
+      digitalWrite(rowPins[row], HIGH); // Desactiva la fila
     }
-    // Si el valor total es diferente a la contraseña
-    return false; // Contraseña incorrecta retorna false
+    return NO_KEY; // Ninguna tecla presionada
+  }
+
+  void update()
+  {
+    Serial.println(enteredPassword);
+    char key = getKeyPressed();
+    if (key == '*')
+    {
+      alarmSystem->activate();
+      return;
+    }
+    if (key != NO_KEY)
+    {
+      enteredPassword += key;
+      if (enteredPassword.length() == password.length())
+      { // Suponiendo que la contraseña tenga 4 dígitos
+        if (enteredPassword == password)
+        { // Suponiendo que "1234" es la contraseña correcta
+          Serial.println("Contraseña correcta");
+          alarmSystem->deactivate();
+        }
+        enteredPassword = ""; // Limpia la contraseña ingresada, sea correcta o no
+      }
+    }
   }
 };
 
@@ -322,10 +361,10 @@ public:
 int globalInterval = 100;
 
 LEDBlinker ledBlinker(LED_PIN, 300);          // Crea un objeto LEDBlinker que es actualizable cada 300 ms
-Alarm alarma(1000);                           // Crea un objeto Alarm que se actualizable cada 1 segundo
+Alarm alarma(100);                            // Crea un objeto Alarm que se actualizable cada 1 segundo
 MotionSensor motionSensor(MOTION_SENSOR_PIN); // Crea un objeto MotionSensor
 Buzzer buzzer(BUZZER_PIN, 1000);              // Crea un objeto Buzzer que es actualizable cada 1 segundo
-Keypad keypad(6);                             // Crea un objeto Keypad
+Keypad keypad(&alarma);                       // Crea un objeto Keypad
 
 // Modes mode = Modes::OFF; // Modo del sistema inicial establecido en OFF
 
@@ -333,9 +372,9 @@ Keypad keypad(6);                             // Crea un objeto Keypad
 // Función de configuración que se ejecuta una vez al inicio del programa
 void setup()
 {
-  Serial.begin(9600);       // Inicializa el puerto serial
-  pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
-  // pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
+  Serial.begin(9600); // Inicializa el puerto serial
+  // pinMode(5, INPUT_PULLUP); // Botón de activación de la alarma
+  //  pinMode(6, INPUT_PULLUP); // Botón de desactivación de la alarma
 
   delay(1000); // Espera 1 segundo antes de empezar el loop
 }
@@ -345,16 +384,16 @@ void setup()
 void loop()
 {
   Serial.println(millis());
-  Modes mode = alarma.getAlarmMode();    // Actualiza el modo del sistema despues de tiempo de espera
-  bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
+  Modes mode = alarma.getAlarmMode(); // Actualiza el modo del sistema despues de tiempo de espera
+  // bool activateAlarma = !digitalRead(5); // Botón de activación de la alarma cambiar por boton del teclado
 
   Serial.println(mode);
   //  Activa la alarma
-  if (activateAlarma)
-  {
-    // mode = "STANDBY";
-    alarma.activate();
-  }
+  // if (activateAlarma)
+  // {
+  //   // mode = "STANDBY";
+  //   alarma.activate();
+  // }
 
   // Si la alarma está activada y se detecta movimiento
   if (mode == Modes::ON && motionSensor.motionDetected())
@@ -363,15 +402,8 @@ void loop()
     alarma.alarm();
   }
 
-  keypad.keypadPressed(); // Botón de desactivación de la alarma cambiar el teclado numerico
-
-  // Si la contraseña es correcta desactiva la alarma
-  if (keypad.isPasswordCorrect())
-  {
-    alarma.deactivate(); // Desactiva la alarma
-  }
-
   alarma.update();             // Actualiza el estado de la alarma empezando por el tiempo de espera
+  keypad.update();             // Actualiza el estado del teclado numérico
   buzzer.changeMode(mode);     // Cambia el modo del BUZZER
   ledBlinker.changeMode(mode); // Cambia el modo del LEDBlinker
   buzzer.update();             // Actualiza el estado del BUZZER
